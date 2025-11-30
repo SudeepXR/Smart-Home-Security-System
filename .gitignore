@@ -1,0 +1,89 @@
+# ----------------------
+# 1. General & OS Files
+# ----------------------
+.DS_Store
+Thumbs.db
+*.log
+
+# ----------------------
+# 2. Environment Variables (CRITICAL)
+# ----------------------
+# Ignore all .env files in any subdirectory
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.env
+
+# ----------------------
+# 3. Node.js & Next.js (Frontend)
+# ----------------------
+# Dependencies
+node_modules/
+/code/node_modules/
+
+# Next.js build output
+.next/
+/code/.next/
+out/
+
+# pnpm debug logs
+pnpm-debug.log*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ----------------------
+# 4. Python (Backend & Scripts)
+# ----------------------
+# Byte-compiled / Optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / Packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environments (If you create them later)
+venv/
+.venv/
+env/
+ENV/
+
+# ----------------------
+# 5. IDE & Editor Settings
+# ----------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ----------------------
+# 6. Project Specific Data (Media/Logs)
+# ----------------------
+# Assuming 'Pics' contains captured images/dataset 
+# (You usually don't want to commit test data or captured faces)
+Pics/
+Face/Pics/
+
+# Ignore generated logs inside the dashboard
+app/dashboard/logs/*.log
