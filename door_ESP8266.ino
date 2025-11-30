@@ -13,8 +13,8 @@ const char* password = "Masaladosa";
 // ----------------------
 // Telegram
 // ----------------------
-const char* botToken = "8360881658:AAFtXcoROgUZ6xA178aMkz4uaPVN9DgYPy0";
-String chatID = "6637316723";
+const char* botToken = "abc";
+String chatID = "abc";
 
 // Telegram queue
 String pendingMessage = "";
