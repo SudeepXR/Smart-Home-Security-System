@@ -1,4 +1,4 @@
-# MVJIT — Doorbell & Home Security Assistant
+# SecureHome
 
 Lightweight multi-component project combining:
 - A Next.js dashboard and UI (frontend) in `code/`
