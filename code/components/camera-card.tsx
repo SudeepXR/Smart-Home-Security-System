@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { Eye, Volume2 } from "lucide-react"
+import { SpotlightCard } from "@/components/effects/spotlight-card"
 
 interface CameraCardProps {
   name: string
@@ -11,10 +12,10 @@ interface CameraCardProps {
 
 export default function CameraCard({ name, location, id }: CameraCardProps) {
   return (
-    <div className="glass rounded-2xl overflow-hidden group">
+    <SpotlightCard className="glass rounded-2xl overflow-hidden group">
       {/* Placeholder Camera Feed */}
       <div className="bg-secondary/50 aspect-video relative flex items-center justify-center overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-transparent"></div>
+        <div className="absolute inset-0 bg-linear-to-br from-primary/10 to-transparent" />
         <div className="text-center z-10">
           <Eye className="w-12 h-12 text-primary/50 mx-auto mb-2" />
           <p className="text-xs text-muted-foreground">Live Feed</p>
@@ -36,12 +37,13 @@ export default function CameraCard({ name, location, id }: CameraCardProps) {
           >
             View Live
           </Link>
+
           <button className="flex-1 bg-secondary/50 hover:bg-secondary text-foreground py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2">
             <Volume2 className="w-4 h-4" />
             Audio
           </button>
         </div>
       </div>
-    </div>
+    </SpotlightCard>
   )
 }

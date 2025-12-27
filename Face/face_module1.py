@@ -8,7 +8,6 @@ import numpy as np
 import cv2
 import face_recognition
 
-
 # -------------------------
 # Load known faces
 # -------------------------
@@ -26,7 +25,6 @@ def load_known_faces(pkl_path):
         return data.get("encodings", []), data.get("names", [])
     return [], []
 
-
 # -------------------------
 # Eye Aspect Ratio (EAR)
 # -------------------------
@@ -34,37 +32,14 @@ def eye_aspect_ratio(eye):
     A = np.linalg.norm(eye[1] - eye[5])
     B = np.linalg.norm(eye[2] - eye[4])
     C = np.linalg.norm(eye[0] - eye[3])
+    print((A + B) / (2.0 * C))
     return (A + B) / (2.0 * C)
 
-
 # -------------------------
-# Frame quality gate (VERY IMPORTANT)
-# -------------------------
-MIN_FRAME_WIDTH = 640
-MIN_FRAME_HEIGHT = 480
-FRAME_BLUR_THRESHOLD = 300.0   # tuned for high-res cameras
-
-'''Cheap laptop webcam	480 x 360	70 - 90	Low optics, noisy sensor, naturally blurry
-Average laptop webcam	640 x 480	90 - 120	Balanced sharpness, common webcams
-External USB webcam (1080p)	800 x 600	120 - 160	Better optics, more texture
-Phone camera / high-res	960 x 720	150 - 220	Very sharp, high-frequency detail'''
-
-def is_frame_low_quality(frame):
-    h, w = frame.shape[:2]
-    if w < MIN_FRAME_WIDTH or h < MIN_FRAME_HEIGHT:
-        return True, 0.0
-
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    blur_score = cv2.Laplacian(gray, cv2.CV_64F).var()
-
-    return blur_score < FRAME_BLUR_THRESHOLD, blur_score
-
-
-# -------------------------
-# Main monitor (ORIGINAL FLOW + HARD GATES)
+# Main monitor (ORIGINAL FLOW + BLINK GUARD)
 # -------------------------
 def monitor_door_and_capture(
-    video_source=2,
+    video_source=1,
     known_face_encodings=None,
     known_face_names=None,
     alert_frame_path=None,
@@ -93,7 +68,7 @@ def monitor_door_and_capture(
     distances_deque = deque(maxlen=required_consecutive)
 
     # -------------------------
-    # Blink FSM (LOW FPS SAFE)
+    # Blink state machine (LOW FPS SAFE)
     # -------------------------
     EAR_THRESHOLD = 0.21
     eye_state = "OPEN"
@@ -108,20 +83,6 @@ def monitor_door_and_capture(
             if not ret:
                 continue
 
-            # -------- FRAME QUALITY GATE (EARLY EXIT) --------
-            low_quality, blur_score = is_frame_low_quality(frame)
-            print(blur_score)
-            if low_quality:
-                # Reset all temporal state
-                labels_deque.clear()
-                distances_deque.clear()
-                eye_state = "OPEN"
-                blink_seen = False
-
-                cv2.imshow("Door Camera", frame)
-                cv2.waitKey(1)
-                continue
-
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             small_frame = cv2.resize(
                 rgb_frame, (0, 0), fx=resize_scale, fy=resize_scale
@@ -131,13 +92,12 @@ def monitor_door_and_capture(
                 small_frame, model=detection_model
             )
 
-            # -------- NO FACE → RESET --------
+            # -------- RESET WHEN NO FACE --------
             if not face_locations:
                 labels_deque.clear()
                 distances_deque.clear()
                 eye_state = "OPEN"
                 blink_seen = False
-
                 cv2.imshow("Door Camera", frame)
                 cv2.waitKey(1)
                 continue
@@ -154,6 +114,7 @@ def monitor_door_and_capture(
 
                     if ear < EAR_THRESHOLD and eye_state == "OPEN":
                         eye_state = "CLOSED"
+
                     elif ear >= EAR_THRESHOLD and eye_state == "CLOSED":
                         blink_seen = True
                         eye_state = "OPEN"
@@ -210,15 +171,15 @@ def monitor_door_and_capture(
             cv2.imshow("Door Camera", frame)
             cv2.waitKey(1)
 
-            # -------- FINAL CONFIRMATION (ALL GUARDS PASSED) --------
+            # -------- FINAL CONFIRMATION (BLINK GUARDED) --------
             if (
                 len(labels_deque) == required_consecutive
                 and all(x == labels_deque[0] for x in labels_deque)
             ):
                 if not blink_seen:
-                    continue
+                    continue  # wait for blink
 
-                # Crop face for evidence
+                # ORIGINAL confirmation behavior
                 t, r, b, l = best_loc
                 scale = 1.0 / resize_scale
                 t_o = int(max(0, round(t * scale)))

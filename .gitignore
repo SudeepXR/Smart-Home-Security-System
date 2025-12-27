@@ -87,3 +87,44 @@ Face/Pics/
 
 # Ignore generated logs inside the dashboard
 app/dashboard/logs/*.log
+
+# ----------------------
+# 7. Additional Common Ignores
+# ----------------------
+# OS/editor caches and misc
+.ipynb_checkpoints/
+.cache/
+*.pyc
+*.pyo
+*.pyd
+
+# Python/tooling caches and reports
+.pytest_cache/
+.mypy_cache/
+pip-wheel-metadata/
+__pypackages__/
+.coverage
+coverage.xml
+htmlcov/
+
+# Database files and runtime state
+*.sqlite3
+*.sqlite
+*.db
+instance/
+
+# Arduino / PlatformIO / firmware build outputs
+.pioenvs/
+.piolibdeps/
+*.bin
+*.hex
+
+# Next/JS / Node tooling
+.vercel/
+.turbo/
+.next/cache/
+
+# Misc
+tmp/
+temp/
+logs/

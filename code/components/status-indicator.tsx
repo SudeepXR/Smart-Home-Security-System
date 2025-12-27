@@ -6,7 +6,7 @@ interface StatusIndicatorProps {
 
 export default function StatusIndicator({ status }: StatusIndicatorProps) {
   const colors = {
-    active: "bg-primary text-primary glow-cyan",
+    active: "bg-green-500 text-blue-500 glow-cyan",
     inactive: "bg-muted text-muted-foreground",
     alert: "bg-accent text-accent-foreground glow-amber",
   }

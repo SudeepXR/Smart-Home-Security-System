@@ -1,47 +1,368 @@
-# app.py
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import subprocess
 import os
 import time
 import signal
+import signal
 import sys
-from database.db import SessionLocal
-from database.models import VisitorLog
-from database.utils import create_user_secure
-from database.utils import authenticate_user
-
-from flask import Flask, jsonify
-from flask_cors import CORS
-import subprocess
+import google.generativeai as genai
 import sys
-import os
 
 
 
-
-# Global handle to the twoway.py process
-twoway_process = None
-
-# Resolve absolute path to twoway.py
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-TWOWAY_PATH = os.path.join(BASE_DIR, "twoway.py")
+AUDIO_SCRIPT = os.path.join(BASE_DIR, "two.py")
+VIDEO_SCRIPT = os.path.join(BASE_DIR, "video.py")
+
+# ==========================
+# COMMUNICATION PROCESS STATE
+# ==========================
+audio_proc = None
+video_proc = None
 
 
-# --- CONFIG ---
-SYSTEM_SCRIPT = os.path.join(os.path.dirname(__file__), "system_main.py")
-# ----------------
+
+
+# ==========================
+# GLOBAL SYSTEM STATE
+# ==========================
+_system_proc = None
+_system_mode = None
+
+#genai API CONFIG
+api_key = os.environ.get("GOOGLE_API_KEY")
+
+if not api_key:
+    raise RuntimeError("GOOGLE_API_KEY not set in environment")
+
+genai.configure(api_key=api_key)
+
+
+from flask_jwt_extended import (
+    JWTManager,
+    create_access_token,
+    jwt_required,
+    get_jwt_identity
+)
+
+
+# ===== IMPORT DB UTILS =====
+from database.utils import (
+    create_user,
+    authenticate_user,
+    log_visitor,
+    get_visitors_for_user,
+    get_today_visitors_for_user
+)
+
+# ==========================
+# FLASK APP SETUP
+# ==========================
 
 app = Flask(__name__)
-CORS(app)
 
-_system_proc = None
-_system_mode = None   # <<── track which mode system_main.py is running with
+# JWT CONFIG
+app.config["JWT_SECRET_KEY"] = "super-secret-key-change-later"
+app.config["JWT_ACCESS_TOKEN_EXPIRES"] = False  # dev mode (no expiry)
+
+jwt = JWTManager(app)
 
 
-# -------------------------
-# Process Control Functions
-# -------------------------
+CORS(
+    app,
+    supports_credentials=True,
+    resources={
+        r"/*": {
+            "origins": ["http://localhost:3000"]
+        }
+    }
+)
+
+
+def _start_communication():
+    global audio_proc, video_proc
+
+    # Already running
+    if audio_proc is not None and audio_proc.poll() is None:
+        return False, "already_running"
+
+    py = sys.executable
+
+    audio_proc = subprocess.Popen(
+    [py, AUDIO_SCRIPT],
+    stdin=subprocess.DEVNULL,
+    stdout=None,
+    stderr=None,
+    close_fds=True
+)
+
+    video_proc = subprocess.Popen(
+    [py, VIDEO_SCRIPT],
+    stdin=subprocess.DEVNULL,
+    stdout=None,
+    stderr=None,
+    close_fds=True
+)
+
+
+    time.sleep(0.5)
+
+    # Check crashes
+    if audio_proc.poll() is not None:
+        audio_proc = None
+        video_proc = None
+        return False, "audio_failed"
+
+    if video_proc.poll() is not None:
+        audio_proc = None
+        video_proc = None
+        return False, "video_failed"
+
+    return True, "started"
+
+
+def _stop_communication(timeout=3.0):
+    global audio_proc, video_proc
+
+    # Nothing running → safe no-op
+    if audio_proc is None and video_proc is None:
+        return True
+
+    procs = [audio_proc, video_proc]
+
+    # Graceful stop
+    for p in procs:
+        if p and p.poll() is None:
+            try:
+                if os.name != "nt":
+                    os.killpg(os.getpgid(p.pid), signal.SIGTERM)
+                else:
+                    p.terminate()
+            except:
+                pass
+
+    t0 = time.time()
+    while time.time() - t0 < timeout:
+        if all(p is None or p.poll() is not None for p in procs):
+            audio_proc = None
+            video_proc = None
+            return True
+        time.sleep(0.1)
+
+    # Force kill
+    for p in procs:
+        try:
+            if p and p.poll() is None:
+                p.kill()
+        except:
+            pass
+
+    audio_proc = None
+    video_proc = None
+    return True
+
+
+
+
+# ==========================
+# SIGNUP (CREATE USER)
+# ==========================
+
+@app.route("/signup", methods=["POST"])
+def signup():
+    data = request.get_json()
+
+    username = data.get("username")
+    password = data.get("password")
+
+    if not username or not password:
+        return jsonify({"error": "username and password required"}), 400
+
+    doorbell_ip = data.get("doorbell_ip")
+    cctv_ip = data.get("cctv_ip")
+    file_destination = data.get("file_destination")
+
+    user = create_user(
+        username=username,
+        password=password,
+        doorbell_ip=doorbell_ip,
+        cctv_ip=cctv_ip,
+        file_destination=file_destination
+    )
+
+    if not user:
+        return jsonify({"error": "User already exists"}), 409
+
+    return jsonify({
+        "message": "User created successfully",
+        "username": user.username
+    }), 201
+
+# ==========================
+# LOGIN (GET TOKEN)
+# ==========================
+
+@app.route("/login", methods=["POST"])
+def login():
+    data = request.get_json()
+
+    username = data.get("username")
+    password = data.get("password")
+
+    user = authenticate_user(username, password)
+    if not user:
+        return jsonify({"error": "Invalid credentials"}), 401
+
+    # 🔑 IMPORTANT: identity MUST be a STRING
+    access_token = create_access_token(identity=str(user.id))
+
+    return jsonify({
+        "access_token": access_token
+    })
+
+# ==========================
+# LOG VISITOR (PROTECTED)
+# ==========================
+@app.route("/api/visitors/log", methods=["POST"])
+@jwt_required()
+def api_log_visitor():
+    """
+    Log a visitor for the currently logged-in user.
+    """
+    user_id = int(get_jwt_identity())
+
+    data = request.get_json(force=True, silent=True) or {}
+    name = data.get("name")
+    purpose = data.get("purpose")
+
+    if not name:
+        return jsonify({"error": "name is required"}), 400
+
+    try:
+        log = log_visitor(
+            user_id=user_id,
+            name=name,
+            purpose=purpose
+        )
+
+        return jsonify({
+            "status": "ok",
+            "log": {
+                "id": log.id,
+                "timestamp": log.timestamp.isoformat(),
+                "name": log.name,
+                "purpose": log.purpose
+            }
+        }), 201
+
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "error": str(e)
+        }), 500
+
+
+@app.route("/visitor", methods=["POST"])
+@jwt_required()
+def add_visitor():
+    user_id = int(get_jwt_identity())  # convert back to int
+
+    data = request.get_json()
+    name = data.get("name")
+    purpose = data.get("purpose")
+
+    if not name:
+        return jsonify({"error": "visitor name required"}), 400
+
+    log_visitor(
+        user_id=user_id,
+        name=name,
+        purpose=purpose
+    )
+
+    return jsonify({"ok": True})
+
+# ==========================
+# GET ALL VISITORS (USER)
+# ==========================
+
+@app.route("/visitors", methods=["GET"])
+@jwt_required()
+def get_visitors():
+    user_id = int(get_jwt_identity())
+
+    logs = get_visitors_for_user(user_id)
+
+    return jsonify([
+        {
+            "timestamp": l.timestamp.isoformat(),
+            "name": l.name,
+            "purpose": l.purpose
+        }
+        for l in logs
+    ])
+
+# ==========================
+# GET TODAY'S VISITORS
+# ==========================
+
+@app.route("/visitors/today", methods=["GET"])
+@jwt_required()
+def get_today_visitors():
+    user_id = int(get_jwt_identity())
+
+    logs = get_today_visitors_for_user(user_id)
+
+    return jsonify([
+        {
+            "timestamp": l.timestamp.isoformat(),
+            "name": l.name,
+            "purpose": l.purpose
+        }
+        for l in logs
+    ])
+
+
+from database.db import SessionLocal
+from database.models import VisitorLog
+
+@app.route("/api/visitors/clear", methods=["POST"])
+@jwt_required()
+def clear_all_visitors_for_user():
+    """
+    Clear ALL visitor logs for the currently logged-in user.
+    """
+    user_id = int(get_jwt_identity())
+
+    db = SessionLocal()
+    try:
+        deleted = (
+            db.query(VisitorLog)
+            .filter(VisitorLog.user_id == user_id)
+            .delete()
+        )
+        db.commit()
+
+        return jsonify({
+            "status": "ok",
+            "deleted": deleted
+        }), 200
+
+    except Exception as e:
+        db.rollback()
+        return jsonify({
+            "status": "error",
+            "error": str(e)
+        }), 500
+
+    finally:
+        db.close()
+
+from flask_jwt_extended import jwt_required, get_jwt_identity
+import subprocess, time
+
+SYSTEM_SCRIPT = os.path.join(os.path.dirname(__file__), "system_main.py")
 
 def _start_system(mode=None):
     """Start system_main.py with optional --mode argument."""
@@ -141,14 +462,12 @@ else:
     # On Windows, SIGINT is fine. SIGTERM may not be available the same way.
     signal.signal(signal.SIGINT, _handle_exit)
 
-
-# -------------------------
-# API Route
-# -------------------------
-
 @app.route("/api/system/arm", methods=["POST"])
+@jwt_required()
 def arm_system():
     global _system_proc, _system_mode
+
+    user_id = int(get_jwt_identity())   # 🔥 extract user from JWT
 
     data = request.get_json(force=True, silent=True) or {}
     armed = bool(data.get("armed"))
@@ -159,169 +478,115 @@ def arm_system():
     else:
         mode = None
 
-    print(f"[app] Request: armed={armed}, mode={mode}")
-
-    # ARM
+    # ARM SYSTEM
     if armed:
-        # If running & same mode -> no action
         if _system_proc is not None and _system_proc.poll() is None:
             if mode == _system_mode:
                 return jsonify({"status": "already_running", "mode": _system_mode}), 200
-            
-            # running but mode changed → restart
-            print("[app] Restarting with new mode:", mode)
             _stop_system()
 
-        # Start new (use the helper so creationflags / preexec_fn are applied consistently)
-        _start_system(mode=mode)
+        py = subprocess.sys.executable
+        args = [
+            py,
+            SYSTEM_SCRIPT,
+            "--user-id", str(user_id)   # ✅ PASS USER ID
+        ]
+
+        if mode:
+            args += ["--mode", mode]
+
+        _system_proc = subprocess.Popen(args)
+        _system_mode = mode
 
         time.sleep(0.2)
-        if _system_proc is not None and _system_proc.poll() is not None:
+        if _system_proc.poll() is not None:
             return jsonify({"status": "error", "error": "process crashed"}), 500
 
         return jsonify({"status": "started", "mode": _system_mode}), 200
 
-    # DISARM
+    # DISARM SYSTEM
     else:
         _stop_system()
         return jsonify({"status": "stopped"}), 200
 
 
+@app.route("/api/assistant", methods=["POST"])
+@jwt_required()
+def assistant():
+    user_id = int(get_jwt_identity())
+    data = request.get_json()
+    user_message = data.get("message", "").strip()
 
-@app.route("/api/system/status", methods=["GET"])
-def status():
-    running = _system_proc is not None and _system_proc.poll() is None
-    pid = _system_proc.pid if running else None
-    return jsonify({"running": running, "mode": _system_mode, "pid": pid})
+    if not user_message:
+        return jsonify({"reply": "Please enter a message."}), 400
 
-@app.route("/api/visitors", methods=["GET"])
-def get_visitors():
-    """
-    Returns all visitor logs as JSON for the frontend.
-    """
-    db = SessionLocal()
-    try:
-        logs = (
-            db.query(VisitorLog)
-            .order_by(VisitorLog.timestamp.desc())
-            .all()
-        )
+    # 1️⃣ Fetch visitor logs
+    logs = get_visitors_for_user(user_id)
 
-        result = [
-            {
-                "id": log.id,
-                "timestamp": log.timestamp.isoformat() if log.timestamp else None,
-                "name": log.name,
-                "purpose": log.purpose,
-            }
-            for log in logs
-        ]
+    formatted_logs = "\n".join([
+        f"- {l.name} | {l.timestamp} | purpose: {l.purpose}"
+        for l in logs
+    ]) or "No visitor logs available."
 
-        return jsonify(result), 200
+    # 2️⃣ Build prompt
+    prompt = f"""
+You are SecureHome Assistant.
+The date today is {time.strftime("%Y-%m-%d %H:%M:%S")}.
+Visitor logs:
+{formatted_logs}
 
-    finally:
-        db.close()
+Rules:
+- Answer ONLY using the visitor logs when relevant
+- Be concise and security-focused
+- If logs are insufficient, say so clearly
 
-@app.route("/api/visitors/clear", methods=["POST"])
-def clear_visitors():
-    """
-    Delete all visitor logs.
-    Be careful – this wipes the table.
-    """
-    db = SessionLocal()
-    try:
-        deleted = db.query(VisitorLog).delete()
-        db.commit()
-        return jsonify({"status": "ok", "deleted": deleted}), 200
-    except Exception as e:
-        db.rollback()
-        return jsonify({"status": "error", "error": str(e)}), 500
-    finally:
-        db.close()
+User question:
+{user_message}
+"""
 
-@app.route("/api/users/create", methods=["POST"])
-def api_create_user():
-    """
-    Create a new user IF house password is correct.
-    Requires:
-    - email
-    - password
-    - house_password
-    """
-    data = request.get_json(force=True, silent=True) or {}
-    email = data.get("email")
-    password = data.get("password")
-    house_password = data.get("house_password")
-
-    if not email or not password or not house_password:
-        return jsonify({"status": "error", "error": "Missing fields"}), 400
-
-    user = create_user_secure(email, password, house_password)
-    if user is None:
-        return jsonify({"status": "error", "error": "Wrong house password"}), 403
-    if user == "Existing":
-        return jsonify({"status": "error", "error": "Existing user login"}), 403
-    return jsonify({"status": "ok", "user_id": user.id}), 200
-
-@app.route("/api/users/login", methods=["POST"])
-def api_login_user():
-    """
-    Authenticate user by email + password.
-    """
-    data = request.get_json(force=True, silent=True) or {}
-    email = data.get("email")
-    password = data.get("password")
-
-    if not email or not password:
-        return jsonify({"status": "error", "error": "Missing fields"}), 400
-
-    user = authenticate_user(email, password)
-    if user is None:
-        return jsonify({"status": "error", "error": "Invalid credentials"}), 401
+    # 3️⃣ Call Gemini
+    model = genai.GenerativeModel("gemini-2.5-flash")
+    response = model.generate_content(prompt)
 
     return jsonify({
-        "status": "ok",
-        "user_id": user.id,
-        "email": user.email,
+        "reply": response.text
+    })
+
+
+
+@app.route("/api/communication/start", methods=["POST"])
+@jwt_required()
+def start_communication():
+    ok, status = _start_communication()
+
+    if not ok:
+        return jsonify({
+            "status": status
+        }), 409
+
+    return jsonify({
+        "status": "running",
+        "audio": "two.py",
+        "video": "video.py"
     }), 200
 
-@app.route("/api/twoway/start", methods=["POST"])
-def start_twoway():
-    global twoway_process
 
-    if twoway_process is not None and twoway_process.poll() is None:
-        return jsonify({"status": "already_running"}), 400
+@app.route("/api/communication/stop", methods=["POST"])
+@jwt_required()
+def stop_communication():
+    _stop_communication()
+    return jsonify({
+        "status": "stopped"
+    }), 200
 
-    try:
-        twoway_process = subprocess.Popen([sys.executable, TWOWAY_PATH])
-        print("🎙 Started twoway.py")
-        return jsonify({"status": "started"}), 200
-    except Exception as e:
-        print("Failed to start twoway.py:", e)
-        twoway_process = None
-        return jsonify({"status": "error", "error": str(e)}), 500
-
-
-@app.route("/api/twoway/stop", methods=["POST"])
-def stop_twoway():
-    global twoway_process
-
-    if twoway_process is None or twoway_process.poll() is not None:
-        twoway_process = None
-        return jsonify({"status": "not_running"}), 400
-
-    try:
-        print("🛑 Stopping twoway.py...")
-        twoway_process.terminate()
-        twoway_process.wait(timeout=5)
-        twoway_process = None
-        return jsonify({"status": "stopped"}), 200
-    except Exception as e:
-        print("Error stopping twoway.py:", e)
-        twoway_process = None
-        return jsonify({"status": "error", "error": str(e)}), 500
-
+# ==========================
+# RUN SERVER
+# ==========================
 
 if __name__ == "__main__":
-    print(f"[app] Starting control API. system_main.py = {SYSTEM_SCRIPT}")
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(
+    host="0.0.0.0",  
+    port=5000,
+    debug=True
+)
+

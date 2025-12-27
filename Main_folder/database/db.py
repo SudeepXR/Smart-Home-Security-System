@@ -1,36 +1,17 @@
-# database/db.py
-
 from sqlalchemy import create_engine
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import sessionmaker, declarative_base
 
-# SQLite DB file
-DATABASE_URL = "sqlite:///mvjit_local.db"
+DATABASE_URL = "sqlite:///./securehome.db"
 
-# Engine = connection to the DB
 engine = create_engine(
     DATABASE_URL,
-    echo=False,   # set True if you want to see SQL queries
-    future=True
+    connect_args={"check_same_thread": False}  # needed for SQLite
 )
 
-# Base class for all ORM models
-Base = declarative_base()
-
-# Session factory (used to talk to DB)
 SessionLocal = sessionmaker(
-    bind=engine,
-    autoflush=False,
     autocommit=False,
-    future=True
+    autoflush=False,
+    bind=engine
 )
 
-
-def init_db():
-    """
-    Import models and create all tables in the DB.
-    Call this once at startup or via init_db.py.
-    """
-    # Import models so that they register with Base.metadata
-    from . import models  # noqa: F401
-
-    Base.metadata.create_all(bind=engine)
+Base = declarative_base()

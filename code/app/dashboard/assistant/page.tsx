@@ -2,7 +2,10 @@
 
 import { useState } from "react";
 import { Send, Bot, User } from "lucide-react";
-
+import { IP_SUD } from "@/app/lib/config";
+if (typeof window !== "undefined" && !localStorage.getItem("user_id")) {
+  window.location.href = "/";
+}
 
 export default function AssistantPage() {
   const [messages, setMessages] = useState([
@@ -11,35 +14,53 @@ export default function AssistantPage() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
 
+
   const sendMessage = async () => {
-    if (!input.trim()) return;
-    const userMsg = { sender: "user", text: input };
-    setMessages((prev) => [...prev, userMsg]);
-    setInput("");
-    setLoading(true);
+  if (!input.trim()) return;
 
-    try {
-      const res = await fetch("/api/assistant", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: input }),
-      });
+  const userMsg = { sender: "user", text: input };
+  setMessages((prev) => [...prev, userMsg]);
+  setInput("");
+  setLoading(true);
 
-      const data = await res.json();
-      setMessages((prev) => [...prev, { sender: "bot", text: data.reply }]);
-    } catch (err) {
-      setMessages((prev) => [...prev, { sender: "bot", text: "⚠️ Error connecting to the assistant." }]);
-    } finally {
-      setLoading(false);
-    }
-  };
+  try {
+    const token = localStorage.getItem("token");
+
+    const res = await fetch(`${IP_SUD}/api/assistant`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ message: userMsg.text }),
+    });
+
+    const data = await res.json();
+
+    setMessages((prev) => [
+      ...prev,
+      { sender: "bot", text: data.reply },
+    ]);
+  } catch (err) {
+    setMessages((prev) => [
+      ...prev,
+      { sender: "bot", text: "⚠️ Backend assistant unavailable." },
+    ]);
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   return (
     <div className="p-8 space-y-6">
+
+      {/* 🔥 NEW BUTTON */}
+
       <h1 className="text-3xl font-bold text-foreground">AI Assistant</h1>
       <p className="text-muted-foreground">Ask about recent entries, alerts, or system events.</p>
 
-      <div className="glass rounded-2xl p-6 h-[70vh] flex flex-col">
+      <div className="glass rounded-2xl p-6 h-[77vh] flex flex-col">
         {/* Chat messages */}
         <div className="flex-1 overflow-y-auto space-y-4 mb-4 scrollbar-thin">
           {messages.map((msg, idx) => (

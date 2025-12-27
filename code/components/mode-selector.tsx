@@ -2,6 +2,9 @@
 
 import { useState } from "react"
 import { Shield, Home, Moon } from "lucide-react"
+import { SpotlightCard } from "@/components/effects/spotlight-card"
+import { IP_SUD, IP_MEG, IP_ESP } from "@/app/lib/config"
+
 
 interface ModeSelectorProps {
   mode: "normal" | "child" | "night"
@@ -14,7 +17,7 @@ export default function ModeSelector({
   mode,
   setMode,
   isArmed,
-  apiBase = "http://localhost:5000",
+  apiBase = IP_SUD,
 }: ModeSelectorProps) {
   const [busy, setBusy] = useState(false)
 
@@ -24,38 +27,54 @@ export default function ModeSelector({
     { id: "night" as const, label: "Night Time", icon: Moon, description: "Enhanced security" },
   ]
 
-  const changeMode = async (newMode: "normal" | "child" | "night") => {
-    setMode(newMode) // update UI instantly
+  const sendModeToESP = async (selectedMode: "normal" | "child" | "night") => {
+    try {
+      await fetch(`${IP_ESP}/mode`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: selectedMode }),
+      })
+    } catch (err) {
+      console.error("ESP mode update failed:", err)
+    }
+  }
 
-    // If disarmed → DO NOT call backend (your rule)
+  const changeMode = async (newMode: "normal" | "child" | "night") => {
+    setMode(newMode)
+
     if (!isArmed) {
-      console.log("Mode changed locally (disarmed) — no backend call")
+      console.log("Mode changed locally (disarmed)")
       return
     }
 
-    // If armed → restart system_main with new mode
     setBusy(true)
     try {
-      const res = await fetch(`${apiBase}/api/system/arm`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ armed: true, mode: newMode }),
-      })
+      const token = localStorage.getItem("token")
 
-      if (!res.ok) {
-        throw new Error("Backend error")
-      }
+    const res = await fetch(`${apiBase}/api/system/arm`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ armed: true, mode: newMode }),
+    })
+
+      if (!res.ok) throw new Error("Backend error")
+
+      await sendModeToESP(newMode)
     } catch (err) {
       console.error(err)
-      alert("Failed to change mode on backend")
-      // we keep the new mode in UI anyway
+      alert("Failed to change mode on backend/ESP")
+    } finally {
+      setBusy(false)
     }
-    setBusy(false)
   }
 
   return (
-    <div className="glass p-6 rounded-2xl">
+    <SpotlightCard className="glass p-6 rounded-2xl">
       <h3 className="text-lg font-semibold text-foreground mb-4">Security Mode</h3>
+
       <div className="space-y-3">
         {modes.map(({ id, label, icon: Icon, description }) => (
           <button
@@ -69,18 +88,26 @@ export default function ModeSelector({
             }`}
           >
             <Icon className="w-5 h-5 flex-shrink-0" />
+
             <div className="text-left flex-1">
               <p className="font-semibold text-sm">{label}</p>
               <p className="text-xs text-muted-foreground">{description}</p>
             </div>
-            <div className={`w-3 h-3 rounded-full ${mode === id ? "bg-primary" : "border border-border"}`}></div>
+
+            <div
+              className={`w-3 h-3 rounded-full ${
+                mode === id ? "bg-primary" : "border border-border"
+              }`}
+            />
           </button>
         ))}
       </div>
 
       <p className="text-xs text-muted-foreground mt-3">
-        {isArmed ? "Changing mode will restart the system." : "Arm system to activate."}
+        {isArmed
+          ? "Changing mode will restart the system and update ESP."
+          : "Arm system to activate."}
       </p>
-    </div>
+    </SpotlightCard>
   )
 }

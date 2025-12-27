@@ -1,40 +1,38 @@
-# database/models.py
-
-from sqlalchemy import Column, Integer, String, DateTime
-from sqlalchemy.sql import func
-
-
-
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy.orm import relationship
 from datetime import datetime
-import pytz
-from sqlalchemy import Column, Integer, String, DateTime
-from sqlalchemy.sql import func
 from .db import Base
 
-IST = pytz.timezone("Asia/Kolkata")
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, nullable=False)   # gmail id
+    password_hash = Column(String, nullable=False)
+
+    doorbell_ip = Column(String)
+    cctv_ip = Column(String)
+
+    file_destination = Column(String)  # redundant for now, future use
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    visitor_logs = relationship(
+        "VisitorLog",
+        back_populates="user",
+        cascade="all, delete"
+    )
+
 
 class VisitorLog(Base):
     __tablename__ = "visitor_logs"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
 
-    timestamp = Column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(IST),   # <<< HERE
-        nullable=False
-    )
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    name = Column(String)
+    purpose = Column(String)
 
-    name = Column(String(100), nullable=False)
-    purpose = Column(String(255), nullable=True)
-
-
-class User(Base):
-    """
-    Simple user table for login.
-    Only email + password (plain text for now, local only).
-    """
-    __tablename__ = "user"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    email = Column(String(255), unique=True, nullable=False, index=True)
-    password = Column(String(255), nullable=False)
+    user = relationship("User", back_populates="visitor_logs")

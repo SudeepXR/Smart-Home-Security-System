@@ -1,146 +1,77 @@
-# database/utils.py
-
 from .db import SessionLocal
-from .models import VisitorLog, User
-
-
-def log_visitor(name: str, purpose: str = None):
-    """
-    Add a visitor entry to the VisitorLog table.
-    Returns the created VisitorLog object.
-    """
-    db = SessionLocal()
-
-    try:
-        log = VisitorLog(name=name, purpose=purpose)
-        db.add(log)
-        db.commit()
-        db.refresh(log)
-
-        print(f"[DB] Logged visitor: {name}, id: {log.id}, time: {log.timestamp} purpose={purpose}")
-        return log
-
-    except Exception as e:
-        print("[DB] Error logging visitor:", e)
-        db.rollback()
-        raise e
-
-    finally:
-        db.close()
-
-
-def clear_all_visitors():
-    """
-    Delete ALL rows from VisitorLog.
-    Use carefully.
-    """
-    db = SessionLocal()
-
-    try:
-        deleted = db.query(VisitorLog).delete()
-        db.commit()
-        print(f"[DB] Cleared {deleted} visitor logs.")
-
-    except Exception as e:
-        print("[DB] Error clearing visitor logs:", e)
-        db.rollback()
-        raise e
-
-    finally:
-        db.close()
-
-def print_all_visitors():
-    """
-    Print all rows in VisitorLog table to the terminal.
-    """
-    db = SessionLocal()
-
-    try:
-        logs = db.query(VisitorLog).all()
-
-        if not logs:
-            print("[DB] No visitor logs found.")
-            return
-
-        print("\n[DB] --- Visitor Logs ---")
-        for l in logs:
-            print(f"ID={l.id} | Time={l.timestamp} | Name={l.name} | Purpose={l.purpose}")
-        print("[DB] ---------------------\n")
-
-    except Exception as e:
-        print("[DB] Error printing logs:", e)
-
-    finally:
-        db.close()
+from .models import User, VisitorLog
+from passlib.context import CryptContext
 
 # =======================
-# USER HELPERS
+# PASSWORD UTILS
 # =======================
 
-def create_user(email: str, password: str):
-    """
-    Create a new user with email + password.
-    WARNING: password is stored as plain text (OK for local dev, NOT for production).
-    """
+from passlib.context import CryptContext
+
+pwd_context = CryptContext(
+    schemes=["pbkdf2_sha256"],
+    deprecated="auto"
+)
+
+
+def hash_password(password: str) -> str:
+    return pwd_context.hash(password)
+
+
+def verify_password(password: str, hashed: str) -> bool:
+    return pwd_context.verify(password, hashed)
+
+# =======================
+# USER FUNCTIONS
+# =======================
+
+def create_user(username, password, doorbell_ip, cctv_ip, file_destination=None):
     db = SessionLocal()
     try:
-        # check if user already exists
-        existing = db.query(User).filter(User.email == email).first()
+        existing = db.query(User).filter(User.username == username).first()
         if existing:
-            print(f"[DB] User already exists: {email} (id={existing.id})")
+            print(f"[DB] User already exists: {username}")
             return existing
 
-        user = User(email=email, password=password)
+        user = User(
+            username=username,
+            password_hash=hash_password(password),
+            doorbell_ip=doorbell_ip,
+            cctv_ip=cctv_ip,
+            file_destination=file_destination
+        )
+
         db.add(user)
         db.commit()
         db.refresh(user)
-        print(f"[DB] Created user: {email} (id={user.id})")
+        print(f"[DB] Created user: {username} (id={user.id})")
         return user
-
     except Exception as e:
-        print("[DB] Error creating user:", e)
         db.rollback()
         raise e
-
     finally:
         db.close()
 
 
-def get_user_by_email(email: str):
-    """
-    Fetch a user by email, or return None.
-    """
+def authenticate_user(username, password):
     db = SessionLocal()
     try:
-        return db.query(User).filter(User.email == email).first()
-    finally:
-        db.close()
-
-
-def authenticate_user(email: str, password: str):
-    """
-    Check email + password.
-    Return User if valid, else None.
-    """
-    db = SessionLocal()
-    try:
-        user = db.query(User).filter(User.email == email).first()
-        if user is None:
-            print(f"[DB] Login failed: no such user {email}")
+        user = db.query(User).filter(User.username == username).first()
+        if not user:
+            print("[DB] Login failed: no such user")
             return None
-        if user.password != password:
-            print(f"[DB] Login failed: wrong password for {email}")
+
+        if not verify_password(password, user.password_hash):
+            print("[DB] Login failed: wrong password")
             return None
-        print(f"[DB] Login success: {email}")
+
+        print("[DB] Login success")
         return user
     finally:
         db.close()
 
 
 def print_all_users():
-    """
-    Print all users.
-    """
     db = SessionLocal()
     try:
         users = db.query(User).all()
@@ -148,72 +79,109 @@ def print_all_users():
             print("[DB] No users found.")
             return
 
-        print("\n[DB] --- Users ---")
+        print("\n[DB] --- USERS ---")
         for u in users:
-            print(f"ID={u.id} | Email={u.email} | Password={u.password}")
+            print(
+                f"ID={u.id} | username={u.username} | "
+                f"doorbell={u.doorbell_ip} | cctv={u.cctv_ip} | "
+                f"files={u.file_destination}"
+            )
         print("[DB] -------------\n")
     finally:
         db.close()
 
-def clear_all_users():
-    """
-    Delete ALL rows from User table.
-    Use carefully.
-    """
-    db = SessionLocal()
 
+def clear_all_users():
+    db = SessionLocal()
     try:
         deleted = db.query(User).delete()
         db.commit()
         print(f"[DB] Cleared {deleted} users.")
-
     except Exception as e:
-        print("[DB] Error clearing users:", e)
         db.rollback()
         raise e
-
     finally:
         db.close()
 
-from housepass import getpass
-HOUSE_PASSWORD = getpass()   # hardcoded for now
 
+# =======================
+# VISITOR LOG FUNCTIONS
+# =======================
+from datetime import datetime, timedelta
 
-def create_user_secure(email: str, password: str, house_password: str):
-    """
-    Create a new user ONLY if the house password matches.
-    Returns:
-        - User object if created
-        - None if creation failed
-    """
-    # Step 1: verify house password
-    if house_password != HOUSE_PASSWORD:
-        print("[DB] Wrong house password. User creation denied.")
-        return None
-
+def log_visitor(user_id: int, name: str, purpose: str = None):
     db = SessionLocal()
+    ist_now = datetime.utcnow() + timedelta(hours=5, minutes=30)
     try:
-        # Step 2: check if email already exists
-        existing = db.query(User).filter(User.email == email).first()
-        print(existing)
-        if existing:
-            print("HI")
-            print(f"[DB] User already exists: {email} (id={existing.id})")
-            return "Existing"
-
-        # Step 3: create new user
-        user = User(email=email, password=password)
-        db.add(user)
+        log = VisitorLog(
+            user_id=user_id,
+            timestamp=ist_now,
+            name=name,
+            purpose=purpose
+        )
+        db.add(log)
         db.commit()
-        db.refresh(user)
-
-        print(f"[DB] Created user: {email} (id={user.id})")
-        return user
-
+        db.refresh(log)
+        print(f"[DB] Visitor logged for user {user_id}: {name}")
+        return log
     except Exception as e:
-        print("[DB] Error creating user:", e)
         db.rollback()
         raise e
+    finally:
+        db.close()
 
+
+def get_visitors_for_user(user_id: int):
+    db = SessionLocal()
+    try:
+        return (
+            db.query(VisitorLog)
+            .filter(VisitorLog.user_id == user_id)
+            .order_by(VisitorLog.timestamp.desc())
+            .all()
+        )
+    finally:
+        db.close()
+
+
+def clear_visitors_for_user(user_id: int):
+    db = SessionLocal()
+    try:
+        deleted = (
+            db.query(VisitorLog)
+            .filter(VisitorLog.user_id == user_id)
+            .delete()
+        )
+        db.commit()
+        print(f"[DB] Cleared {deleted} visitor logs for user {user_id}")
+    except Exception as e:
+        db.rollback()
+        raise e
+    finally:
+        db.close()
+
+from datetime import datetime, date
+from sqlalchemy import and_
+
+def get_today_visitors_for_user(user_id: int):
+    """
+    Get only today's visitor logs for a specific user.
+    """
+    db = SessionLocal()
+    try:
+        today = date.today()
+
+        logs = (
+            db.query(VisitorLog)
+            .filter(
+                VisitorLog.user_id == user_id,
+                VisitorLog.timestamp >= datetime.combine(today, datetime.min.time()),
+                VisitorLog.timestamp <= datetime.combine(today, datetime.max.time())
+            )
+            .order_by(VisitorLog.timestamp.desc())
+            .all()
+        )
+
+        return logs
     finally:
         db.close()

@@ -1,50 +1,64 @@
 "use client"
 
-
-
 import { useEffect, useState } from "react"
 import { ArrowLeft, Bell, Trash2, User } from "lucide-react"
 import Link from "next/link"
 
-  
+import { IP_SUD } from "../../lib/config";
+
+
 type VisitorLog = {
-  id: number
   name: string
   purpose: string | null
   timestamp: string | null
 }
+
 
 export default function LogsPage() {
   const [logs, setLogs] = useState<VisitorLog[]>([])
   const [loading, setLoading] = useState(true)           // initial load
   const [error, setError] = useState<string | null>(null)
   const [clearing, setClearing] = useState(false)
+  useEffect(() => {
+  const token = localStorage.getItem("token")
+  if (!token) {
+    window.location.href = "/"
+  }
+}, [])
 
   const fetchLogs = async (background: boolean = false) => {
-    try {
-      if (!background) {
-        setLoading(true)
-        setError(null)
-      }
+  try {
+    if (!background) {
+      setLoading(true)
+      setError(null)
+    }
 
-      const res = await fetch("http://localhost:5000/api/visitors")
-      if (!res.ok) {
-        throw new Error("Failed to fetch logs")
-      }
+    const token = localStorage.getItem("token")
 
-      const data = await res.json()
-      setLogs(data)
-    } catch (err) {
-      console.error(err)
-      if (!background) {
-        setError("Failed to load logs")
-      }
-    } finally {
-      if (!background) {
-        setLoading(false)
-      }
+    const res = await fetch(`${IP_SUD}/visitors`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+
+    if (!res.ok) {
+      throw new Error("Failed to fetch logs")
+    }
+
+    const data = await res.json()
+    setLogs(data)
+  } catch (err) {
+    console.error(err)
+    if (!background) {
+      setError("Failed to load logs")
+    }
+  } finally {
+    if (!background) {
+      setLoading(false)
     }
   }
+}
+
 
   useEffect(() => {
     // initial load
@@ -69,9 +83,13 @@ export default function LogsPage() {
 
     try {
       setClearing(true)
-      const res = await fetch("http://localhost:5000/api/visitors/clear", {
+      const res = await fetch(`${IP_SUD}/api/visitors/clear`, {
         method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
       })
+
 
       if (!res.ok) {
         throw new Error("Failed to clear logs")
@@ -128,14 +146,14 @@ export default function LogsPage() {
         </div>
       ) : (
         <div className="glass rounded-2xl divide-y divide-border">
-          {logs.map((log) => {
+          {logs.map((log, index) => {
             const formattedTime = log.timestamp
               ? new Date(log.timestamp).toLocaleString()
               : "Unknown time"
 
             return (
               <div
-                key={log.id}
+                key={`${log.timestamp}-${index}`}
                 className="p-6 hover:bg-card/50 transition flex items-start gap-4"
               >
                 <div className="p-3 bg-secondary/50 rounded-lg">

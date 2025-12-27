@@ -8,8 +8,9 @@ import { useState } from "react"
 import { ArrowLeft, Moon, Sun } from "lucide-react"
 import Link from "next/link"
 
-if (typeof window !== "undefined" && !localStorage.getItem("token")) window.location.replace("/")
-
+if (typeof window !== "undefined" && !localStorage.getItem("user_id")) {
+  window.location.href = "/";
+}
 export default function SettingsPage() {
   const [theme, setTheme] = useState("dark")
   const [notifications, setNotifications] = useState(true)
