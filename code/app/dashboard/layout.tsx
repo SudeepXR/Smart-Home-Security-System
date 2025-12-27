@@ -5,7 +5,7 @@ import type React from "react"
 import { useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Menu, X, Home, Eye, Phone, LogOut, Settings, Clock, MessageSquare } from "lucide-react"
+import { Menu, X, Home, Eye, Phone, LogOut, Clock, MessageSquare } from "lucide-react"
 
 export default function DashboardLayout({
   children,
@@ -23,7 +23,6 @@ export default function DashboardLayout({
     { href: "/dashboard/doorbell", label: "Doorbell", icon: Phone },
     { href: "/dashboard/assistant", label: "AI Assistant", icon: MessageSquare },
     { href: "/dashboard/logs", label: "Activity Log", icon: Clock },
-    { href: "/dashboard/settings", label: "Settings", icon: Settings },
   ]
 
   return (

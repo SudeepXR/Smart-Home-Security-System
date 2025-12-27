@@ -157,11 +157,7 @@ useEffect(() => {
             </div>
             <div className="flex justify-between">
               <span>Cameras</span>
-              <span className="font-semibold">2 Online</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Alerts</span>
-              <span className="font-semibold">{alerts}</span>
+              <span className="font-semibold">Online</span>
             </div>
           </div>
         </SpotlightCard>
