@@ -8,6 +8,9 @@ import ModeSelector from "@/components/mode-selector"
 import StatusIndicator from "@/components/status-indicator"
 import { SpotlightCard } from "@/components/effects/spotlight-card"
 import { IP_SUD } from "../lib/config"
+
+
+
 type VisitorLog = {
   id: number
   name: string
@@ -17,7 +20,7 @@ type VisitorLog = {
 
 export default function Dashboard() {
   const router = useRouter()
-
+  const [hydrated, setHydrated] = useState(false) 
   const [authChecked, setAuthChecked] = useState(false)
 
   const [isArmed, setIsArmed] = useState(false)
@@ -37,6 +40,40 @@ export default function Dashboard() {
     }
     setAuthChecked(true)
   }, [router])
+
+
+// 🔁 Rehydrate armed state + mode from localStorage
+useEffect(() => {
+  if (!authChecked) return
+
+  const savedArmed = localStorage.getItem("isArmed")
+  const savedMode = localStorage.getItem("securityMode")
+
+  if (savedArmed !== null) {
+    setIsArmed(savedArmed === "true")
+  }
+
+  if (
+    savedMode === "normal" ||
+    savedMode === "child" ||
+    savedMode === "night"
+  ) {
+    setMode(savedMode)
+  }
+
+  setHydrated(true) // ✅ mark hydration complete
+}, [authChecked])
+
+
+// 💾 Persist armed state + mode
+
+useEffect(() => {
+  if (!hydrated) return
+  localStorage.setItem("isArmed", String(isArmed))
+  localStorage.setItem("securityMode", mode)
+}, [isArmed, mode, hydrated])
+
+
 
   const handleLogout = () => {
     localStorage.removeItem("token")

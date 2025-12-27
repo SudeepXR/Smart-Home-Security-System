@@ -24,7 +24,7 @@ export default function ModeSelector({
   const modes = [
     { id: "normal" as const, label: "Normal", icon: Home, description: "Standard protection" },
     { id: "child" as const, label: "Child Safety", icon: Shield, description: "Indoor monitoring" },
-    { id: "night" as const, label: "Night Time", icon: Moon, description: "Enhanced security" },
+    { id: "night" as const, label: "Presence Simulator", icon: Moon, description: "Enhanced security" },
   ]
 
   const sendModeToESP = async (selectedMode: "normal" | "child" | "night") => {
