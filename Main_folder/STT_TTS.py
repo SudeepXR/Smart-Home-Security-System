@@ -1,7 +1,21 @@
-import speech_recognition as sr
+import sounddevice as sd
+from scipy.io.wavfile import write
+from faster_whisper import WhisperModel
+import tempfile
+import numpy as np
+
 import pyttsx3
 import requests
 import json
+
+
+WHISPER_MODEL = WhisperModel(
+    "base",
+    device="cpu",
+    compute_type="int8"
+)
+
+
 
 
 def get_ai_response(prompt_text):
@@ -52,24 +66,40 @@ def speak(text):
     engine.runAndWait()
 
 
-def listen():
-    """Listen to microphone and return recognized text."""
-    r = sr.Recognizer()
-    with sr.Microphone() as source:
-        print("Listening... 🎤")
-        r.adjust_for_ambient_noise(source)
-        audio = r.listen(source)
+def listen(duration=5, sample_rate=16000):
+    """
+    Record audio from mic and transcribe using Whisper
+    """
+    print("Listening... 🎤")
 
-        try:
-            text = r.recognize_google(audio)
-            print("You said:", text)
-            return text
-        except sr.UnknownValueError:
-            print("Could not understand audio")
-            return ""
-        except sr.RequestError:
-            print("Error with STT service")
-            return ""
+    recording = sd.rec(
+        int(duration * sample_rate),
+        samplerate=sample_rate,
+        channels=1,
+        dtype="int16"
+    )
+    sd.wait()
+
+    # Save temp wav
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+        write(tmp.name, sample_rate, recording)
+        wav_path = tmp.name
+
+    try:
+        segments, _ = WHISPER_MODEL.transcribe(
+            wav_path,
+            language="en",
+            beam_size=5
+        )
+
+        text = " ".join(segment.text for segment in segments).strip()
+        print("You said:", text)
+        return text
+
+    except Exception as e:
+        print("Whisper STT error:", e)
+        return ""
+
 
 
 def run_conversation():
