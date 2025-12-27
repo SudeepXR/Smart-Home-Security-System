@@ -5,7 +5,7 @@ DATABASE_URL = "sqlite:///./securehome.db"
 
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False}  # needed for SQLite
+    connect_args={"check_same_thread": False}
 )
 
 SessionLocal = sessionmaker(

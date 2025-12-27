@@ -53,7 +53,8 @@ from database.utils import (
     authenticate_user,
     log_visitor,
     get_visitors_for_user,
-    get_today_visitors_for_user
+    get_today_visitors_for_user,
+    get_visitors_with_pics_for_user
 )
 
 # ==========================
@@ -302,6 +303,9 @@ def get_visitors():
         }
         for l in logs
     ])
+
+
+
 
 # ==========================
 # GET TODAY'S VISITORS
@@ -582,6 +586,123 @@ def stop_communication():
 # ==========================
 # RUN SERVER
 # ==========================
+
+
+@app.route("/api/visitors/log-with-image", methods=["POST"])
+@jwt_required()
+def api_log_visitor_with_image():
+    user_id = int(get_jwt_identity())
+
+    data = request.get_json(force=True, silent=True) or {}
+    name = data.get("name")
+    purpose = data.get("purpose")
+    message_id = data.get("message_id")   # ✅ Telegram message id
+
+    if not name:
+        return jsonify({"error": "name is required"}), 400
+
+    try:
+        log = log_visitor(
+            user_id=user_id,
+            name=name,
+            purpose=purpose,
+            message_id=message_id
+        )
+
+        return jsonify({
+            "status": "ok",
+            "log": {
+                "id": log.id,
+                "timestamp": log.timestamp.isoformat(),
+                "name": log.name,
+                "purpose": log.purpose,
+                "message_id": log.message_id
+            }
+        }), 201
+
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "error": str(e)
+        }), 500
+
+@app.route("/visitors-pic", methods=["GET"])
+@jwt_required()
+def get_visitors_with_pics():
+    user_id = int(get_jwt_identity())
+    logs = get_visitors_with_pics_for_user(user_id)
+    return jsonify(logs)
+
+
+
+@app.route("/api/visitors/<int:visitor_id>/flag", methods=["POST"])
+@jwt_required()
+def set_visitor_flag(visitor_id):
+    user_id = int(get_jwt_identity())
+
+    db = SessionLocal()
+    try:
+        log = (
+            db.query(VisitorLog)
+            .filter(
+                VisitorLog.id == visitor_id,
+                VisitorLog.user_id == user_id
+            )
+            .first()
+        )
+
+        if not log:
+            return jsonify({"error": "Visitor log not found"}), 404
+
+        log.flag = 1
+        db.commit()
+
+        return jsonify({
+            "status": "ok",
+            "visitor_id": visitor_id,
+            "flag": log.flag
+        }), 200
+
+    except Exception as e:
+        db.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.close()
+
+@app.route("/api/visitors/<int:visitor_id>/unflag", methods=["POST"])
+@jwt_required()
+def unset_visitor_flag(visitor_id):
+    user_id = int(get_jwt_identity())
+
+    db = SessionLocal()
+    try:
+        log = (
+            db.query(VisitorLog)
+            .filter(
+                VisitorLog.id == visitor_id,
+                VisitorLog.user_id == user_id
+            )
+            .first()
+        )
+
+        if not log:
+            return jsonify({"error": "Visitor log not found"}), 404
+
+        log.flag = 0
+        db.commit()
+
+        return jsonify({
+            "status": "ok",
+            "visitor_id": visitor_id,
+            "flag": log.flag
+        }), 200
+
+    except Exception as e:
+        db.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.close()
+
 
 if __name__ == "__main__":
     app.run(

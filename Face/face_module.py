@@ -40,9 +40,9 @@ def eye_aspect_ratio(eye):
 # -------------------------
 # Frame quality gate (VERY IMPORTANT)
 # -------------------------
-MIN_FRAME_WIDTH = 640
-MIN_FRAME_HEIGHT = 480
-FRAME_BLUR_THRESHOLD = 300.0   # tuned for high-res cameras
+MIN_FRAME_WIDTH = 480
+MIN_FRAME_HEIGHT = 360
+FRAME_BLUR_THRESHOLD = 75.0   # tuned for high-res cameras
 
 '''Cheap laptop webcam	480 x 360	70 - 90	Low optics, noisy sensor, naturally blurry
 Average laptop webcam	640 x 480	90 - 120	Balanced sharpness, common webcams
@@ -64,7 +64,7 @@ def is_frame_low_quality(frame):
 # Main monitor (ORIGINAL FLOW + HARD GATES)
 # -------------------------
 def monitor_door_and_capture(
-    video_source=2,
+    video_source=0,
     known_face_encodings=None,
     known_face_names=None,
     alert_frame_path=None,

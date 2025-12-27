@@ -185,3 +185,76 @@ def get_today_visitors_for_user(user_id: int):
         return logs
     finally:
         db.close()
+
+import base64
+from .db import SessionLocal
+from .models import VisitorLog
+
+def get_visitors_with_pics_for_user(user_id: int):
+    db = SessionLocal()
+    try:
+        logs = (
+            db.query(VisitorLog)
+            .filter(VisitorLog.user_id == user_id)
+            .order_by(VisitorLog.timestamp.desc())
+            .all()
+        )
+
+        results = []
+        for l in logs:
+            img_b64 = None
+            if l.photo:
+                img_b64 = base64.b64encode(l.photo).decode("utf-8")
+
+            results.append({
+                "id": l.id,
+                "timestamp": l.timestamp.isoformat() if l.timestamp else None,
+                "name": l.name,
+                "purpose": l.purpose,
+                "image": img_b64,
+                "flag": l.flag     # ✅ THIS LINE IS REQUIRED
+            })
+
+        return results
+    finally:
+        db.close()
+
+
+
+
+import os
+from datetime import datetime, timedelta
+
+FACE_IMAGE_PATH = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "Face", "alert_frame.jpg")
+)
+
+
+def log_visitor(user_id: int, name: str, purpose: str = None, message_id: str = None):
+    db = SessionLocal()
+    ist_now = datetime.utcnow() + timedelta(hours=5, minutes=30)
+
+    photo_bytes = None
+    if os.path.exists(FACE_IMAGE_PATH):
+        with open(FACE_IMAGE_PATH, "rb") as f:
+            photo_bytes = f.read()
+
+    try:
+        log = VisitorLog(
+            user_id=user_id,
+            timestamp=ist_now,
+            name=name,
+            purpose=purpose,
+            photo=photo_bytes,       # ✅ image stored
+            message_id=message_id    # ✅ message ID stored
+        )
+        db.add(log)
+        db.commit()
+        db.refresh(log)
+        print(f"[DB] Visitor logged for user {user_id}: {name}")
+        return log
+    except Exception as e:
+        db.rollback()
+        raise e
+    finally:
+        db.close()
