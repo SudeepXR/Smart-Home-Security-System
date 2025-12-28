@@ -1,5 +1,78 @@
 # SecureHome
 
+SecureHome is an **AI-powered smart home security system** designed to go beyond traditional CCTV and doorbell solutions.  
+Instead of just recording footage, SecureHome actively **understands what is happening**, **interacts with visitors**, and **assists homeowners in real time** using computer vision, speech interfaces, and an AI assistant.
+
+The system is built as a **lightweight, distributed, multi-device architecture**, making it suitable for real-world deployment using common hardware such as webcams, microphones, speakers, and ESP-based IoT devices.
+
+## What SecureHome Does
+
+- 📹 **Live surveillance & human detection** using on-device computer vision  
+- 🧠 **Face recognition** to distinguish known vs unknown visitors  
+- 🎙️ **Two-way voice interaction** with visitors using Speech-to-Text (STT) and Text-to-Speech (TTS)  
+- 🤖 **Local AI assistant** for intelligent responses, system control, and query handling  
+- 📊 **Web dashboard** for monitoring system status, live feed, logs, and alerts  
+- 📁 **Persistent visitor logging** using a lightweight SQLite database  
+- 🔌 **IoT integration** (ESP8266) for doorbell input, LEDs, and physical alerts  
+
+## Operating Modes
+
+SecureHome supports **three distinct operating modes**, allowing the system to adapt its behavior based on the home’s current needs:
+
+### 1️⃣ Normal Mode  
+- Standard security monitoring  
+- Detects visitors, performs face recognition, and logs activity  
+- Allows manual interaction through the dashboard and AI assistant  
+
+### 2️⃣ Child Safety Mode  
+- Designed for homes with children  
+- Notifies parents when the door is opened/closed with an alert when the door is opened for extended periods of time.  
+- Triggers **stricter monitoring** and **faster alerts**  
+- Prioritizes unknown-person detection and abnormal activity  
+- Reduces reliance on manual confirmation  
+- Integrates with the **ESP8266 module** 
+
+### 3️⃣ Presence Simulator Mode  
+- Used when homeowners are **away from home**  
+- Integrates with the **ESP8266 module**  
+- Simulates human presence by:
+  - Controlling LEDs and connected devices
+  - Responding to doorbell interactions
+- Helps deter potential intruders by making the house appear occupied
+
+## Why SecureHome Is Different
+
+Most smart security systems are **passive** — they record video and notify users.  
+SecureHome is **active and intelligent**:
+
+- It understands **who** is at the door
+- It can **talk back** to visitors
+- It can **log, reason, and assist** instead of just streaming video
+- It is **privacy-first**, running AI and vision models locally without cloud dependency
+
+## System Architecture (High Level)
+
+SecureHome runs across **three coordinated systems**:
+
+1. **Frontend System**  
+   - Next.js dashboard for live feed, system state, logs, and controls  
+
+2. **Backend / AI System**  
+   - Python services handling:
+     - Face recognition
+     - Speech recognition & synthesis
+     - AI assistant orchestration
+     - Database logging
+     - Security logic  
+
+3. **CCTV / Vision System**  
+   - Dedicated camera service for live video capture and detection  
+
+An optional **ESP8266 device** acts as the physical interface for doorbell presses and alerts.
+
+---
+
+
 Lightweight multi-component project combining:
 - A Next.js dashboard and UI (frontend) in `code/`
 - Python on-device assistant, STT/TTS, face recognition and orchestration in `Main/` and `Face/`
@@ -82,8 +155,3 @@ Notes
 - Camera Sources should be changed to 0 if webcam is user
 - The assistant expects an AI endpoint on `localhost:11434` by default; change `Main/STT_TTS.py` `get_ai_response` URL if needed.
 - Configure all IP addresses for the 3 systems (IP_SUD for backend, IP_MEG for CCTV, IP_SUT for frontend system, IP_ESP for ESP8266
-
-
-
-
-
